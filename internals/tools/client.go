@@ -123,3 +123,13 @@ func (c *APIClient) Leaders(ctx context.Context, stat, season, seasonType, limit
 	}
 	return c.get(ctx, "/players/leaders", p)
 }
+
+func (c *APIClient) DefenseStats(ctx context.Context, playerID, season, seasonType string) (json.RawMessage, error) {
+	p := url.Values{
+		"season_type": {seasonType},
+	}
+	if season != "" {
+		p.Set("season", season)
+	}
+	return c.get(ctx, "/players/"+playerID+"/defense", p)
+}
