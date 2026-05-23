@@ -18,7 +18,7 @@ func Register(s *server.MCPServer, client *APIClient) {
 	s.AddTool(comparePlayersTool(), comparePlayersHandler(client))
 	s.AddTool(vsTeamTool(), vsTeamHandler(client))
 	s.AddTool(leadersTool(), leadersHandler(client))
-
+	s.AddTool(defenseStatsTool(), defenseStatsHandler(client))
 }
 
 func searchPlayersTool() mcp.Tool {
@@ -81,7 +81,7 @@ Use this for questions like:
 			mcp.Description("Basketball Reference player ID. ALWAYS USE search_players first to resolve player ID."),
 		),
 		mcp.WithString("season",
-			mcp.Description("Season in year end format, e.g. '2022-23, 22/23, 2022-2023' for '2023' season. Omit for all seasons."),
+			mcp.Description("Season as a 4-digit end year, e.g. '2022-23, 22/23, 2022-2023' for '2023' season. Omit for all seasons."),
 		),
 		mcp.WithString("season_type",
 			mcp.Description("'regular' or 'playoffs'. Defaults to 'regular'."),
@@ -132,7 +132,7 @@ Examples:
 			mcp.Description("Opponent TEAM abbreviation only, e.g. GSW, LAL, BOS. Not a player name."),
 		),
 		mcp.WithString("season",
-			mcp.Description("Season in YYYY-YY format e.g. 2023-24. Omit for all-time averages."),
+			mcp.Description("Season as a 4-digit end year. e.g. '2022-23, 22/23, 2022-2023' for '2023'  Omit for all-time averages."),
 		),
 		mcp.WithString("seasontype",
 			mcp.Description("regular or playoffs, default regular"),
@@ -188,7 +188,7 @@ Do NOT use getplayerstatsvsteam for player vs player — that tool is for player
 			mcp.Description("Comma-separated Basketball Reference player IDs, e.g. 'jokicni01,embiijo01'. ALWAYS USE search_players first to resolve player IDs."),
 		),
 		mcp.WithString("seasons",
-			mcp.Description("Comma-separated seasons in YYYY-YY format e.g. '2023-24' or '2022-23,2023-24'. Omit for all-time."),
+			mcp.Description("Comma-separated seasons in YYYY-YY format e.g. '2023-24' or '2022-23,2023-24'. It can also be a range of seasons like '2022-2026 which will translate into 2021-22, 2022-23, 2023-24, 2024-25 and 2025-26' Omit for all-time."),
 		),
 		mcp.WithString("season_type",
 			mcp.Description("'regular' or 'playoffs'. Defaults to 'regular'."),
@@ -237,7 +237,7 @@ func leadersTool() mcp.Tool {
 			mcp.Enum("pts", "reb", "ast", "stl", "blk", "fg_pct", "fg3_pct", "ts_pct", "per", "bpm", "vorp", "ws", "usg_pct"),
 		),
 		mcp.WithString("season",
-			mcp.Description("Season in year end format, e.g. '2022-23, 22/23, 2022-2023' for '2023' season. Omit for all-time."),
+			mcp.Description("Season as a 4-digit end year, e.g. '2022-23, 22/23, 2022-2023' for '2023' season. Omit for all-time."),
 		),
 		mcp.WithString("season_type",
 			mcp.Description("'regular' or 'playoffs'. Defaults to 'regular'."),
@@ -257,6 +257,50 @@ func leadersHandler(client *APIClient) server.ToolHandlerFunc {
 		limit := stringArg(req, "limit", "10")
 
 		data, err := client.Leaders(ctx, stat, season, seasonType, limit)
+		if err != nil {
+			return toolError(err), nil
+		}
+		return toolResult(data), nil
+	}
+}
+
+func defenseStatsTool() mcp.Tool {
+	return mcp.NewTool("get_player_defense_stats",
+		mcp.WithDescription(
+			"Get per-game defensive stats for a player — opponent FGA and FGM per game when this player "+
+				"is the closest defender, plus opponent FG% and DFG% diff vs league average. "+
+				"def_fga and def_fgm are season averages (e.g. 4.2 FGA allowed per game), NOT single-game counts. "+
+				"def_fgpct, dfg_diff, and normal_fgpct are expressed as percentages (e.g. 40.7, -8.6, 49.3). "+
+				"dfg_diff is opponent FG% minus league average in percentage points — negative = better defender. "+
+				"Also use this for questions like: how are players shooting when X is the primary defender?"+
+				"Omit season to get the full career defensive history. "+
+				"ALWAYS USE search_players first to resolve the player_id.",
+		),
+		mcp.WithString("player_id",
+			mcp.Required(),
+			mcp.Description("Basketball Reference player ID, e.g. 'jokicni01'. ALWAYS USE search_players first."),
+		),
+		mcp.WithString("season",
+			mcp.Description("Season as a 4-digit end year, e.g. '2022-23, 22/23, 2022-2023' for '2023' season. Omit for all-time."),
+		),
+		mcp.WithString("season_type",
+			mcp.Description("'regular' or 'playoffs'. Defaults to 'regular'."),
+			mcp.Enum("regular", "playoffs"),
+		),
+	)
+}
+
+func defenseStatsHandler(client *APIClient) server.ToolHandlerFunc {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		playerID := stringArg(req, "player_id", "")
+		season := stringArg(req, "season", "")
+		seasonType := stringArg(req, "season_type", "regular")
+
+		if playerID == "" {
+			return toolError(fmt.Errorf("player_id is required")), nil
+		}
+
+		data, err := client.DefenseStats(ctx, playerID, season, seasonType)
 		if err != nil {
 			return toolError(err), nil
 		}
